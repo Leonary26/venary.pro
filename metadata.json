@@ -1,0 +1,6 @@
+{
+  "name": "VENARY – Agence de Services Numériques",
+  "description": "Site vitrine officiel de VENARY, entreprise de services numériques : création de sites web professionnels, développement sur mesure, design graphique et identités visuelles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

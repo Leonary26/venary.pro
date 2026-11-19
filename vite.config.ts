@@ -1,0 +1,65 @@
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
+import path from 'node:path';
+import { defineConfig } from 'vite';
+
+export default defineConfig(() => {
+  const rootDir = import.meta.dirname;
+
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+      // Copies src/assets into dist/ so root-relative URLs like
+      // "/src/assets/images/..." still resolve in production builds.
+      {
+        name: 'copy-unbundled-src-assets',
+        apply: 'build',
+        closeBundle(error?: Error): void {
+          if (error) {
+            return;
+          }
+          const distDir = path.resolve(rootDir, 'dist');
+          const srcAssets = path.resolve(rootDir, 'src/assets');
+          const distAssets = path.resolve(distDir, 'src/assets');
+          if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
+            fs.cpSync(srcAssets, distAssets, { recursive: true, force: true });
+          }
+        },
+      },
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve(rootDir, '.'),
+      },
+    },
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'react-vendor',
+                test: /node_modules[\\/](react|react-dom|scheduler)/,
+              },
+              {
+                name: 'motion-vendor',
+                test: /node_modules[\\/](motion|framer-motion)/,
+              },
+              {
+                name: 'icons-vendor',
+                test: /node_modules[\\/]lucide-react/,
+              },
+            ],
+          },
+        },
+      },
+    },
+    server: {
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+  };
+});
