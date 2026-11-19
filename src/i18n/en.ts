@@ -364,6 +364,7 @@ export const en: TranslationDictionary = {
         INVALID_JSON: 'Invalid request format.',
         NETWORK_ERROR:
           'Unable to reach the server. Please check your internet connection and try again.',
+        METHOD_NOT_ALLOWED: 'HTTP method not allowed.',
       },
       successBadge: 'Confirmed',
       successHeading: 'Message sent successfully!',
