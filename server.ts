@@ -65,40 +65,92 @@ interface ContactRequestBody {
   locale?: unknown;
 }
 
-const SERVER_MESSAGES = {
+type ContactErrorCode =
+  | 'RATE_LIMIT'
+  | 'SPAM'
+  | 'TOO_FAST'
+  | 'INVALID_NAME'
+  | 'INVALID_EMAIL'
+  | 'INVALID_PROJECT_TYPE'
+  | 'INVALID_MESSAGE'
+  | 'SERVICE_UNAVAILABLE'
+  | 'RESEND_ERROR'
+  | 'SERVER_ERROR'
+  | 'INVALID_JSON';
+
+const SERVER_MESSAGES: Record<'fr' | 'en', Record<ContactErrorCode, string>> = {
   fr: {
-    rateLimit:
+    RATE_LIMIT:
       'Trop de messages envoyés récemment. Veuillez patienter quelques minutes avant de réessayer.',
-    spam: 'Requête refusée par la protection anti-spam.',
-    tooFast: 'Soumission trop rapide détectée. Veuillez réessayer.',
-    invalidName: 'Le nom complet doit contenir entre 2 et 120 caractères.',
-    invalidEmail: 'Veuillez fournir une adresse e-mail valide.',
-    invalidProjectType: 'Veuillez sélectionner un type de projet valide.',
-    invalidMessage: 'Le message doit contenir entre 15 et 5000 caractères.',
-    missingKey:
-      "Le service d'envoi d'e-mails n'est pas encore configuré sur le serveur (RESEND_API_KEY manquante).",
-    resendError:
-      "L'envoi du message via Resend a échoué. Vérifiez la configuration de l'expéditeur.",
-    serverError:
-      "Une erreur technique est survenue lors de l'envoi de votre message. Veuillez réessayer.",
+    SPAM: 'Requête refusée par la protection anti-spam.',
+    TOO_FAST: 'Soumission trop rapide détectée. Veuillez réessayer.',
+    INVALID_NAME: 'Le nom complet doit contenir entre 2 et 120 caractères.',
+    INVALID_EMAIL: 'Veuillez fournir une adresse e-mail valide.',
+    INVALID_PROJECT_TYPE: 'Veuillez sélectionner un type de projet valide.',
+    INVALID_MESSAGE: 'Le message doit contenir entre 15 et 5000 caractères.',
+    SERVICE_UNAVAILABLE:
+      "Le service d'envoi de messages est momentanément indisponible. Veuillez réessayer ultérieurement.",
+    RESEND_ERROR:
+      "L'envoi du message a échoué pour le moment. Veuillez réessayer dans quelques instants.",
+    SERVER_ERROR: 'Une erreur est survenue. Veuillez réessayer.',
+    INVALID_JSON: 'Format de requête invalide.',
   },
   en: {
-    rateLimit:
+    RATE_LIMIT:
       'Too many messages sent recently. Please wait a few minutes before trying again.',
-    spam: 'Request rejected by anti-spam protection.',
-    tooFast: 'Submission detected as too fast. Please try again.',
-    invalidName: 'Full name must be between 2 and 120 characters.',
-    invalidEmail: 'Please provide a valid email address.',
-    invalidProjectType: 'Please select a valid project type.',
-    invalidMessage: 'Message must be between 15 and 5000 characters.',
-    missingKey:
-      'The email delivery service is not configured yet on the server (missing RESEND_API_KEY).',
-    resendError:
-      'Failed to send email via Resend. Please check sender configuration.',
-    serverError:
-      'A technical error occurred while sending your message. Please try again.',
+    SPAM: 'Request rejected by anti-spam protection.',
+    TOO_FAST: 'Submission detected as too fast. Please try again.',
+    INVALID_NAME: 'Full name must be between 2 and 120 characters.',
+    INVALID_EMAIL: 'Please provide a valid email address.',
+    INVALID_PROJECT_TYPE: 'Please select a valid project type.',
+    INVALID_MESSAGE: 'Message must be between 15 and 5000 characters.',
+    SERVICE_UNAVAILABLE:
+      'The message delivery service is temporarily unavailable. Please try again later.',
+    RESEND_ERROR:
+      'Unable to deliver your message right now. Please try again in a moment.',
+    SERVER_ERROR: 'An error occurred. Please try again.',
+    INVALID_JSON: 'Invalid request format.',
   },
 };
+
+function extractServerErrorDetail(err: unknown): string {
+  if (typeof err === 'string') {
+    const trimmed = err.trim();
+    return trimmed && !trimmed.includes('[object Object]')
+      ? trimmed
+      : 'Erreur inconnue';
+  }
+  if (err instanceof Error) {
+    return err.message && !err.message.includes('[object Object]')
+      ? err.message
+      : err.name || 'Erreur interne';
+  }
+  if (typeof err === 'object' && err !== null) {
+    const record = err as Record<string, unknown>;
+    for (const key of ['message', 'error', 'name', 'code']) {
+      if (key in record && record[key] !== undefined) {
+        const extracted = extractServerErrorDetail(record[key]);
+        if (extracted !== 'Erreur inconnue') {
+          return extracted;
+        }
+      }
+    }
+  }
+  return 'Erreur inconnue';
+}
+
+function sendContactError(
+  res: Response,
+  status: number,
+  lang: 'fr' | 'en',
+  code: ContactErrorCode,
+) {
+  res.status(status).json({
+    success: false,
+    code,
+    error: SERVER_MESSAGES[lang][code],
+  });
+}
 
 async function startServer() {
   const app = express();
@@ -117,6 +169,22 @@ async function startServer() {
   });
 
   app.use(express.json({ limit: '32kb' }));
+  app.use(
+    (
+      err: unknown,
+      req: Request,
+      res: Response,
+      next: (e?: unknown) => void,
+    ) => {
+      if (err instanceof SyntaxError && 'body' in err) {
+        const acceptLang = req.get('accept-language')?.toLowerCase() ?? '';
+        const fallbackLang = acceptLang.startsWith('en') ? 'en' : 'fr';
+        sendContactError(res, 400, fallbackLang, 'INVALID_JSON');
+        return;
+      }
+      next(err);
+    },
+  );
 
   const resolveOrigin = (req: Request): string => {
     const envUrl = process.env.APP_URL?.trim();
@@ -175,30 +243,23 @@ async function startServer() {
     const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
     const body = (req.body ?? {}) as ContactRequestBody;
     const lang = body.locale === 'en' ? 'en' : 'fr';
-    const msg = SERVER_MESSAGES[lang];
 
     if (isRateLimited(clientIp)) {
-      res.status(429).json({
-        error: msg.rateLimit,
-      });
+      sendContactError(res, 429, lang, 'RATE_LIMIT');
       return;
     }
 
     // 1. Contrôle anti-spam (champ piège honeypot + délai minimal humain)
     const honeypot = typeof body.website === 'string' ? body.website.trim() : '';
     if (honeypot.length > 0) {
-      res.status(400).json({
-        error: msg.spam,
-      });
+      sendContactError(res, 400, lang, 'SPAM');
       return;
     }
 
     if (typeof body.formStartedAt === 'number' && Number.isFinite(body.formStartedAt)) {
       const elapsedMs = Date.now() - body.formStartedAt;
       if (elapsedMs >= 0 && elapsedMs < 1200) {
-        res.status(400).json({
-          error: msg.tooFast,
-        });
+        sendContactError(res, 400, lang, 'TOO_FAST');
         return;
       }
     }
@@ -212,9 +273,7 @@ async function startServer() {
     const message = typeof body.message === 'string' ? body.message.trim() : '';
 
     if (fullName.length < 2 || fullName.length > 120) {
-      res.status(400).json({
-        error: msg.invalidName,
-      });
+      sendContactError(res, 400, lang, 'INVALID_NAME');
       return;
     }
 
@@ -224,23 +283,17 @@ async function startServer() {
       !EMAIL_PATTERN.test(email) ||
       HEADER_INJECTION_PATTERN.test(email)
     ) {
-      res.status(400).json({
-        error: msg.invalidEmail,
-      });
+      sendContactError(res, 400, lang, 'INVALID_EMAIL');
       return;
     }
 
     if (projectType.length < 2 || projectType.length > 120) {
-      res.status(400).json({
-        error: msg.invalidProjectType,
-      });
+      sendContactError(res, 400, lang, 'INVALID_PROJECT_TYPE');
       return;
     }
 
     if (message.length < 15 || message.length > 5000) {
-      res.status(400).json({
-        error: msg.invalidMessage,
-      });
+      sendContactError(res, 400, lang, 'INVALID_MESSAGE');
       return;
     }
 
@@ -248,9 +301,7 @@ async function startServer() {
     const resendApiKey = process.env.RESEND_API_KEY?.trim();
     if (!resendApiKey || resendApiKey.startsWith('MY_')) {
       console.error('[VENARY Contact] RESEND_API_KEY manquante ou non configurée.');
-      res.status(503).json({
-        error: msg.missingKey,
-      });
+      sendContactError(res, 503, lang, 'SERVICE_UNAVAILABLE');
       return;
     }
 
@@ -350,23 +401,46 @@ async function startServer() {
       });
 
       if (error || !data?.id) {
-        console.error('[VENARY Contact] Erreur Resend :', error?.message || 'Réponse vide');
-        res.status(502).json({
-          error: error?.message || msg.resendError,
-        });
+        const internalMsg = error ? extractServerErrorDetail(error) : 'Réponse vide';
+        console.error('[VENARY Contact] Erreur Resend :', internalMsg);
+        sendContactError(res, 502, lang, 'RESEND_ERROR');
         return;
       }
+
+      let deliveryStatus = 'queued';
+      try {
+        const statusLookup = await resend.emails.get(data.id);
+        if (statusLookup.data?.last_event) {
+          deliveryStatus = statusLookup.data.last_event;
+        }
+      } catch {
+        // La vérification immédiate du statut peut être indisponible juste après la mise en file
+      }
+
+      if (deliveryStatus === 'bounced' || deliveryStatus === 'canceled') {
+        console.error(
+          `[VENARY Contact] Échec de livraison Resend (${deliveryStatus}) pour ID ${data.id}`,
+        );
+        sendContactError(res, 502, lang, 'RESEND_ERROR');
+        return;
+      }
+
+      console.info(
+        `[VENARY Contact] E-mail transmis à ${contactEmail} (ID: ${data.id}, statut: ${deliveryStatus})`,
+      );
 
       res.status(200).json({
         success: true,
         messageId: data.id,
+        deliveryStatus,
         submittedAt: new Date().toISOString(),
       });
     } catch (err) {
-      console.error('[VENARY Contact] Exception serveur :', err);
-      res.status(500).json({
-        error: msg.serverError,
-      });
+      console.error(
+        '[VENARY Contact] Exception serveur :',
+        extractServerErrorDetail(err),
+      );
+      sendContactError(res, 500, lang, 'SERVER_ERROR');
     }
   });
 
@@ -403,6 +477,31 @@ async function startServer() {
       }
     });
   }
+
+  app.use(
+    (
+      err: unknown,
+      req: Request,
+      res: Response,
+      next: (e?: unknown) => void,
+    ) => {
+      if (res.headersSent) {
+        next(err);
+        return;
+      }
+      if (req.path.startsWith('/api/')) {
+        console.error(
+          '[VENARY API] Erreur non interceptée :',
+          extractServerErrorDetail(err),
+        );
+        const acceptLang = req.get('accept-language')?.toLowerCase() ?? '';
+        const fallbackLang = acceptLang.startsWith('en') ? 'en' : 'fr';
+        sendContactError(res, 500, fallbackLang, 'SERVER_ERROR');
+        return;
+      }
+      next(err);
+    },
+  );
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`VENARY server listening on http://0.0.0.0:${PORT}`);

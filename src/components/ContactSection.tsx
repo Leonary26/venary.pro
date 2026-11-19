@@ -12,6 +12,8 @@ import {
 import { COMPANY_INFO } from '../data/venaryData';
 import { useLanguage } from '../i18n/LanguageContext';
 import {
+  ContactRequestError,
+  extractSafeErrorMessage,
   submitContactRequest,
   validateContactForm,
   type ContactValidationErrors,
@@ -37,6 +39,7 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
   const [errors, setErrors] = useState<ContactValidationErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitErrorCode, setSubmitErrorCode] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
   const formStartedAtRef = useRef<number>(Date.now());
@@ -76,6 +79,11 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
 
+  const clearSubmitError = () => {
+    if (submitError) setSubmitError(null);
+    if (submitErrorCode) setSubmitErrorCode(null);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
@@ -84,6 +92,7 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
     }
 
     setSubmitError(null);
+    setSubmitErrorCode(null);
 
     const formValues: ContactFormValues = {
       fullName,
@@ -121,8 +130,25 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
       setHoneypot('');
       formStartedAtRef.current = Date.now();
     } catch (error) {
+      const errorCode =
+        error instanceof ContactRequestError && typeof error.code === 'string'
+          ? error.code
+          : null;
+      const mappedByCode =
+        errorCode &&
+        Object.prototype.hasOwnProperty.call(
+          t.contact.form.errorByCode,
+          errorCode,
+        )
+          ? extractSafeErrorMessage(
+              t.contact.form.errorByCode[errorCode],
+              t.contact.form.genericError,
+            )
+          : null;
+      setSubmitErrorCode(errorCode);
       setSubmitError(
-        error instanceof Error ? error.message : t.contact.form.genericError,
+        mappedByCode ??
+          extractSafeErrorMessage(error, t.contact.form.genericError),
       );
     } finally {
       setIsSubmitting(false);
@@ -132,8 +158,55 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
   const handleResetSuccess = () => {
     setIsSuccess(false);
     setSubmitError(null);
+    setSubmitErrorCode(null);
     formStartedAtRef.current = Date.now();
   };
+
+  const getSafeFieldError = (
+    rawError: unknown,
+    fallback: string,
+  ): string | undefined => {
+    if (!rawError) {
+      return undefined;
+    }
+    return extractSafeErrorMessage(rawError, fallback);
+  };
+
+  const safeFullNameError = getSafeFieldError(
+    errors.fullName,
+    t.contact.form.validation.fullName,
+  );
+  const safeEmailError = getSafeFieldError(
+    errors.email,
+    t.contact.form.validation.emailInvalid,
+  );
+  const safeProjectTypeError = getSafeFieldError(
+    errors.projectType,
+    t.contact.form.validation.projectTypeRequired,
+  );
+  const safeMessageError = getSafeFieldError(
+    errors.message,
+    t.contact.form.validation.messageMinLength,
+  );
+
+  const displayedSubmitError =
+    submitErrorCode &&
+    Object.prototype.hasOwnProperty.call(
+      t.contact.form.errorByCode,
+      submitErrorCode,
+    )
+      ? extractSafeErrorMessage(
+          t.contact.form.errorByCode[submitErrorCode],
+          t.contact.form.genericError,
+        )
+      : submitError
+        ? extractSafeErrorMessage(submitError, t.contact.form.genericError)
+        : null;
+
+  const charactersUnitLabel =
+    typeof t.contact.form.charactersUnit === 'string'
+      ? t.contact.form.charactersUnit
+      : 'caractères';
 
   return (
     <section id="contact" className="bg-white py-20 lg:py-28">
@@ -301,7 +374,7 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                           if (errors.fullName) {
                             setErrors((prev) => ({ ...prev, fullName: undefined }));
                           }
-                          if (submitError) setSubmitError(null);
+                          clearSubmitError();
                         }}
                         placeholder={t.contact.form.fullNamePlaceholder}
                         aria-invalid={Boolean(errors.fullName)}
@@ -314,14 +387,14 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                             : 'border-zinc-300 focus:border-[#D91E2A]'
                         }`}
                       />
-                      {errors.fullName && (
+                      {safeFullNameError && (
                         <p
                           id="error-fullname"
                           role="alert"
                           className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-[#D91E2A]"
                         >
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                          <span>{errors.fullName}</span>
+                          <span>{safeFullNameError}</span>
                         </p>
                       )}
                     </div>
@@ -348,7 +421,7 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                           if (errors.email) {
                             setErrors((prev) => ({ ...prev, email: undefined }));
                           }
-                          if (submitError) setSubmitError(null);
+                          clearSubmitError();
                         }}
                         placeholder={t.contact.form.emailPlaceholder}
                         aria-invalid={Boolean(errors.email)}
@@ -359,14 +432,14 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                             : 'border-zinc-300 focus:border-[#D91E2A]'
                         }`}
                       />
-                      {errors.email && (
+                      {safeEmailError && (
                         <p
                           id="error-email"
                           role="alert"
                           className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-[#D91E2A]"
                         >
                           <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                          <span>{errors.email}</span>
+                          <span>{safeEmailError}</span>
                         </p>
                       )}
                     </div>
@@ -395,7 +468,7 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                             projectType: undefined,
                           }));
                         }
-                        if (submitError) setSubmitError(null);
+                        clearSubmitError();
                       }}
                       aria-invalid={Boolean(errors.projectType)}
                       aria-describedby={
@@ -413,14 +486,14 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                         </option>
                       ))}
                     </select>
-                    {errors.projectType && (
+                    {safeProjectTypeError && (
                       <p
                         id="error-project-type"
                         role="alert"
                         className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-[#D91E2A]"
                       >
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                        <span>{errors.projectType}</span>
+                        <span>{safeProjectTypeError}</span>
                       </p>
                     )}
                   </div>
@@ -436,7 +509,7 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                         <span className="text-[#D91E2A]">*</span>
                       </label>
                       <span className="text-xs text-zinc-400 tabular-nums">
-                        {message.trim().length} {t.contact.form.charactersUnit}
+                        {message.trim().length} {charactersUnitLabel}
                       </span>
                     </div>
                     <textarea
@@ -451,38 +524,38 @@ export function ContactSection({ preselectedProjectId }: ContactSectionProps) {
                         if (errors.message) {
                           setErrors((prev) => ({ ...prev, message: undefined }));
                         }
-                        if (submitError) setSubmitError(null);
+                        clearSubmitError();
                       }}
                       placeholder={t.contact.form.messagePlaceholder}
-                      aria-invalid={Boolean(errors.message)}
+                      aria-invalid={Boolean(safeMessageError)}
                       aria-describedby={
-                        errors.message ? 'error-message' : undefined
+                        safeMessageError ? 'error-message' : undefined
                       }
                       className={`w-full px-4 py-3 bg-white border rounded-sm text-sm text-[#111113] placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-[#D91E2A]/20 transition-colors resize-y disabled:opacity-60 ${
-                        errors.message
+                        safeMessageError
                           ? 'border-[#D91E2A]'
                           : 'border-zinc-300 focus:border-[#D91E2A]'
                       }`}
                     />
-                    {errors.message && (
+                    {safeMessageError && (
                       <p
                         id="error-message"
                         role="alert"
                         className="mt-1.5 flex items-center gap-1.5 text-xs font-medium text-[#D91E2A]"
                       >
                         <AlertCircle className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-                        <span>{errors.message}</span>
+                        <span>{safeMessageError}</span>
                       </p>
                     )}
                   </div>
 
-                  {submitError && (
+                  {displayedSubmitError && (
                     <div
                       role="alert"
                       className="p-4 bg-red-50 border border-[#D91E2A] rounded-sm flex items-start gap-2.5 text-sm text-[#980E18]"
                     >
                       <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
-                      <span>{submitError}</span>
+                      <span>{displayedSubmitError}</span>
                     </div>
                   )}
 

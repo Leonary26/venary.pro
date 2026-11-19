@@ -319,7 +319,7 @@ export const en: TranslationDictionary = {
       charactersUnit: 'characters',
       requiredNotePrefix: 'Fields marked with',
       requiredNoteSuffix: 'are required.',
-      submitButton: 'Send Message',
+      submitButton: 'Send message',
       submittingButton: 'Sending...',
       projectTypeOptions: [
         { id: 'sites-web', label: 'Professional Website Creation' },
@@ -344,12 +344,29 @@ export const en: TranslationDictionary = {
         messageMinLength:
           'Please briefly describe your project (minimum 15 characters) so we can assist you effectively.',
       },
-      genericError:
-        'An error occurred while sending your message. Please try again.',
+      genericError: 'An error occurred. Please try again.',
       networkError:
-        'Message delivery failed. Please check your connection or try again shortly.',
+        'Unable to reach the server. Please check your internet connection and try again.',
+      errorByCode: {
+        RATE_LIMIT:
+          'Too many messages sent recently. Please wait a few minutes before trying again.',
+        SPAM: 'Request rejected by anti-spam protection.',
+        TOO_FAST: 'Submission detected as too fast. Please try again.',
+        INVALID_NAME: 'Full name must be between 2 and 120 characters.',
+        INVALID_EMAIL: 'Please provide a valid email address.',
+        INVALID_PROJECT_TYPE: 'Please select a valid project type.',
+        INVALID_MESSAGE: 'Message must be between 15 and 5000 characters.',
+        SERVICE_UNAVAILABLE:
+          'The message delivery service is temporarily unavailable. Please try again later.',
+        RESEND_ERROR:
+          'Unable to deliver your message right now. Please try again in a moment.',
+        SERVER_ERROR: 'An error occurred. Please try again.',
+        INVALID_JSON: 'Invalid request format.',
+        NETWORK_ERROR:
+          'Unable to reach the server. Please check your internet connection and try again.',
+      },
       successBadge: 'Confirmed',
-      successHeading: 'Message Sent',
+      successHeading: 'Message sent successfully!',
       successMessage:
         'Your message has been sent successfully! We will get back to you shortly.',
       sendAnotherButton: 'Send Another Message',

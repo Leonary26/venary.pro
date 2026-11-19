@@ -12,9 +12,71 @@ export interface ContactSubmissionResult {
   success: boolean;
   messageId: string;
   submittedAt: string;
+  deliveryStatus?: string;
+}
+
+export class ContactRequestError extends Error {
+  code?: string;
+
+  constructor(message: unknown, code?: string) {
+    super(extractSafeErrorMessage(message, 'Une erreur est survenue.'));
+    this.name = 'ContactRequestError';
+    this.code = code;
+  }
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function findSafeErrorString(value: unknown, depth = 0): string | null {
+  if (depth > 5 || value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length > 0 && !trimmed.includes('[object Object]')) {
+      return trimmed;
+    }
+    return null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findSafeErrorString(item, depth + 1);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
+  }
+
+  if (value instanceof Error) {
+    return findSafeErrorString(value.message, depth + 1);
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    for (const key of ['error', 'message', 'detail', 'msg', 'reason', 'title']) {
+      if (Object.prototype.hasOwnProperty.call(record, key)) {
+        const found = findSafeErrorString(record[key], depth + 1);
+        if (found) {
+          return found;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+export function extractSafeErrorMessage(
+  value: unknown,
+  fallback: string,
+  depth = 0,
+): string {
+  const safeFallback = findSafeErrorString(fallback) ?? 'Une erreur est survenue.';
+  return findSafeErrorString(value, depth) ?? safeFallback;
+}
 
 export function validateContactForm(
   values: ContactFormValues,
@@ -23,21 +85,36 @@ export function validateContactForm(
   const errors: ContactValidationErrors = {};
 
   if (!values.fullName.trim() || values.fullName.trim().length < 2) {
-    errors.fullName = messages.fullName;
+    errors.fullName = extractSafeErrorMessage(
+      messages.fullName,
+      'Veuillez renseigner votre nom complet.',
+    );
   }
 
   if (!values.email.trim()) {
-    errors.email = messages.emailRequired;
+    errors.email = extractSafeErrorMessage(
+      messages.emailRequired,
+      'Veuillez saisir votre adresse e-mail.',
+    );
   } else if (!EMAIL_PATTERN.test(values.email.trim())) {
-    errors.email = messages.emailInvalid;
+    errors.email = extractSafeErrorMessage(
+      messages.emailInvalid,
+      'Veuillez saisir une adresse e-mail valide.',
+    );
   }
 
   if (!values.projectType.trim()) {
-    errors.projectType = messages.projectTypeRequired;
+    errors.projectType = extractSafeErrorMessage(
+      messages.projectTypeRequired,
+      'Veuillez sélectionner un type de projet.',
+    );
   }
 
   if (!values.message.trim() || values.message.trim().length < 15) {
-    errors.message = messages.messageMinLength;
+    errors.message = extractSafeErrorMessage(
+      messages.messageMinLength,
+      'Veuillez saisir un message de 15 caractères minimum.',
+    );
   }
 
   return errors;
@@ -51,40 +128,64 @@ export async function submitContactRequest(
   payload: ContactPayload,
   fallbackErrorMessage: string,
 ): Promise<ContactSubmissionResult> {
-  const response = await fetch('/api/contact', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  let data: {
-    success?: boolean;
-    messageId?: string;
-    submittedAt?: string;
-    error?: string;
-  } | null = null;
+  let response: Response;
 
   try {
-    data = (await response.json()) as {
-      success?: boolean;
-      messageId?: string;
-      submittedAt?: string;
-      error?: string;
-    };
+    response = await fetch('/api/contact', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
   } catch {
-    data = null;
+    throw new ContactRequestError(fallbackErrorMessage, 'NETWORK_ERROR');
   }
 
-  if (!response.ok || !data?.success || !data?.messageId) {
-    throw new Error(data?.error || fallbackErrorMessage);
+  let rawBody: unknown = null;
+
+  try {
+    const textBody = await response.text();
+    rawBody = textBody ? (JSON.parse(textBody) as unknown) : null;
+  } catch {
+    rawBody = null;
+  }
+
+  const data =
+    typeof rawBody === 'object' && rawBody !== null
+      ? (rawBody as {
+          success?: unknown;
+          messageId?: unknown;
+          submittedAt?: unknown;
+          deliveryStatus?: unknown;
+          error?: unknown;
+          code?: unknown;
+        })
+      : null;
+
+  if (
+    !response.ok ||
+    data?.success !== true ||
+    typeof data.messageId !== 'string' ||
+    data.messageId.trim().length === 0
+  ) {
+    const safeError = extractSafeErrorMessage(
+      data?.error ?? rawBody,
+      fallbackErrorMessage,
+    );
+    const errorCode = typeof data?.code === 'string' ? data.code : undefined;
+    throw new ContactRequestError(safeError, errorCode);
   }
 
   return {
     success: true,
     messageId: data.messageId,
-    submittedAt: data.submittedAt || new Date().toISOString(),
+    submittedAt:
+      typeof data.submittedAt === 'string'
+        ? data.submittedAt
+        : new Date().toISOString(),
+    deliveryStatus:
+      typeof data.deliveryStatus === 'string' ? data.deliveryStatus : undefined,
   };
 }

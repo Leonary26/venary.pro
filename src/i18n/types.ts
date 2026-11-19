@@ -140,6 +140,7 @@ export interface TranslationDictionary {
       };
       genericError: string;
       networkError: string;
+      errorByCode: Record<string, string>;
       successBadge: string;
       successHeading: string;
       successMessage: string;

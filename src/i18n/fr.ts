@@ -345,12 +345,31 @@ export const fr: TranslationDictionary = {
         messageMinLength:
           'Décrivez brièvement votre besoin (15 caractères minimum) afin que nous puissions vous répondre utilement.',
       },
-      genericError:
-        "Une erreur est survenue lors de l'envoi. Veuillez réessayer.",
+      genericError: 'Une erreur est survenue. Veuillez réessayer.',
       networkError:
-        "L'envoi du message a échoué. Veuillez vérifier votre connexion ou réessayer dans un instant.",
+        'Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.',
+      errorByCode: {
+        RATE_LIMIT:
+          'Trop de messages envoyés récemment. Veuillez patienter quelques minutes avant de réessayer.',
+        SPAM: 'Requête refusée par la protection anti-spam.',
+        TOO_FAST: 'Soumission trop rapide détectée. Veuillez réessayer.',
+        INVALID_NAME:
+          'Le nom complet doit contenir entre 2 et 120 caractères.',
+        INVALID_EMAIL: 'Veuillez fournir une adresse e-mail valide.',
+        INVALID_PROJECT_TYPE: 'Veuillez sélectionner un type de projet valide.',
+        INVALID_MESSAGE:
+          'Le message doit contenir entre 15 et 5000 caractères.',
+        SERVICE_UNAVAILABLE:
+          "Le service d'envoi de messages est momentanément indisponible. Veuillez réessayer ultérieurement.",
+        RESEND_ERROR:
+          "L'envoi du message a échoué pour le moment. Veuillez réessayer dans quelques instants.",
+        SERVER_ERROR: 'Une erreur est survenue. Veuillez réessayer.',
+        INVALID_JSON: 'Format de requête invalide.',
+        NETWORK_ERROR:
+          'Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez.',
+      },
       successBadge: 'Confirmation',
-      successHeading: 'Message envoyé',
+      successHeading: 'Message envoyé avec succès !',
       successMessage:
         'Votre message a été envoyé avec succès ! Nous vous répondrons rapidement.',
       sendAnotherButton: 'Envoyer un autre message',
